@@ -4,7 +4,7 @@ import { Layout } from './components/Layout'
 import { ProtectedRoute } from './components/ProtectedRoute'
 import { Login } from './pages/Login'
 import { Signup } from './pages/Signup'
-import { Dashboard } from './pages/Dashboard'
+import { Home } from './pages/Home'
 import { SetEditor } from './pages/SetEditor'
 import { StudySelect } from './pages/StudySelect'
 import { StudySession } from './pages/StudySession'
@@ -17,14 +17,7 @@ export default function App() {
           <Routes>
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
-            <Route
-              path="/"
-              element={
-                <ProtectedRoute>
-                  <Dashboard />
-                </ProtectedRoute>
-              }
-            />
+            <Route path="/" element={<Home />} />
             <Route
               path="/sets/new"
               element={

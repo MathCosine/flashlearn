@@ -52,7 +52,7 @@ export function TypeAnswer({
     const pct = score.total > 0 ? Math.round((score.correct / score.total) * 100) : 0
     return (
       <Panel className="mx-auto max-w-md bg-emerald-200 p-8 text-center">
-        <p className="text-2xl font-extrabold text-slate-900">⌨️ Done!</p>
+        <p className="text-2xl font-extrabold text-slate-900">Done!</p>
         <p className="mt-2 font-medium text-slate-700">
           {score.correct} / {score.total} correct ({pct}%)
         </p>
@@ -96,8 +96,8 @@ export function TypeAnswer({
               }`}
             >
               {result === 'correct'
-                ? '✅ Correct!'
-                : `❌ Correct answer: ${current.back}`}
+                ? 'Correct!'
+                : `Correct answer: ${current.back}`}
             </p>
             <Button type="button" onClick={next} variant="blue">
               {index + 1 >= order.length ? 'See results' : 'Next →'}

@@ -21,7 +21,10 @@ export function Layout({ children }: { children: ReactNode }) {
             to="/"
             className="flex items-center gap-2 text-xl font-extrabold text-slate-900"
           >
-            <span>🗃️</span>
+            <span
+              aria-hidden
+              className="h-6 w-6 rounded-md border-2 border-black bg-emerald-400"
+            />
             <span>FlashLearn</span>
           </Link>
           {user && (

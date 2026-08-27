@@ -34,6 +34,7 @@ export function ClassicFlip({
         Card {index + 1} of {order.length}
       </p>
       <FlashCardView
+        key={current.id}
         card={current}
         set={setById.get(current.set_id)}
         flipped={flipped}
@@ -55,7 +56,7 @@ export function ClassicFlip({
         </Button>
       </div>
       <Button onClick={handleShuffle} variant="neutral" size="sm">
-        🔀 Shuffle
+        Shuffle
       </Button>
     </div>
   )

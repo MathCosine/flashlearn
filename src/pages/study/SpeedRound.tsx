@@ -63,7 +63,7 @@ export function SpeedRound({
   if (phase === 'ready') {
     return (
       <Panel className="mx-auto max-w-md bg-yellow-100 p-8 text-center">
-        <p className="text-2xl font-extrabold text-slate-900">⏱️ Speed Round</p>
+        <p className="text-2xl font-extrabold text-slate-900">Speed Round</p>
         <p className="mt-2 font-medium text-slate-700">
           5 minutes, shuffled cards, self-graded. Great for a quick daily
           review. Ready?
@@ -79,7 +79,7 @@ export function SpeedRound({
     const accuracy = reviewed > 0 ? Math.round((correct / reviewed) * 100) : 0
     return (
       <Panel className="mx-auto max-w-md bg-emerald-200 p-8 text-center">
-        <p className="text-2xl font-extrabold text-slate-900">⏱️ Time's up!</p>
+        <p className="text-2xl font-extrabold text-slate-900">Time's up!</p>
         <p className="mt-2 font-medium text-slate-700">
           Reviewed {reviewed} card{reviewed === 1 ? '' : 's'} — {correct}{' '}
           correct ({accuracy}%)
@@ -108,6 +108,7 @@ export function SpeedRound({
       </div>
 
       <FlashCardView
+        key={current.id}
         card={current}
         set={setById.get(current.set_id)}
         flipped={flipped}
@@ -121,10 +122,10 @@ export function SpeedRound({
       ) : (
         <div className="flex gap-3">
           <Button onClick={() => grade(false)} variant="red">
-            ❌ Missed it
+            Missed it
           </Button>
           <Button onClick={() => grade(true)} variant="green">
-            ✅ Knew it
+            Knew it
           </Button>
         </div>
       )}

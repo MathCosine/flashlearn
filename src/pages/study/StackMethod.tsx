@@ -60,7 +60,7 @@ export function StackMethod({
     return (
       <Panel className="mx-auto max-w-md bg-emerald-200 p-8 text-center">
         <p className="text-2xl font-extrabold text-slate-900">
-          🎉 All {cards.length} cards known!
+          All {cards.length} cards known!
         </p>
         <p className="mt-2 font-medium text-slate-700">
           It took {round} round{round === 1 ? '' : 's'} through the stack.
@@ -90,6 +90,7 @@ export function StackMethod({
       </div>
 
       <FlashCardView
+        key={current.id}
         card={current}
         set={setById.get(current.set_id)}
         flipped={flipped}
@@ -103,10 +104,10 @@ export function StackMethod({
       ) : (
         <div className="flex gap-3">
           <Button onClick={() => advance(false)} variant="red">
-            ❌ Not yet
+            Not yet
           </Button>
           <Button onClick={() => advance(true)} variant="green">
-            ✅ I knew it
+            Knew it
           </Button>
         </div>
       )}

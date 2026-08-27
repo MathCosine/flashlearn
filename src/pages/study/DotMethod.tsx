@@ -97,6 +97,7 @@ export function DotMethod({
       </div>
 
       <FlashCardView
+        key={current.id}
         card={current}
         set={setById.get(current.set_id)}
         flipped={flipped}
@@ -110,10 +111,10 @@ export function DotMethod({
       ) : (
         <div className="flex gap-3">
           <Button onClick={addDot} variant="red">
-            🔴 Add a dot (didn't know it)
+            Add a dot (didn't know it)
           </Button>
           <Button onClick={markGotIt} variant="green">
-            ✅ Got it
+            Got it
           </Button>
         </div>
       )}

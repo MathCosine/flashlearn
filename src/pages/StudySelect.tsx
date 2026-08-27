@@ -149,9 +149,7 @@ export function StudySelect() {
                   : 'bg-white shadow-[4px_4px_0_0_#000] hover:-translate-y-0.5 hover:shadow-[5px_5px_0_0_#000]'
               }`}
             >
-              <p className="font-extrabold text-slate-900">
-                {m.emoji} {m.name}
-              </p>
+              <p className="font-extrabold text-slate-900">{m.name}</p>
               <p className="mt-1 text-sm font-medium text-slate-600">
                 {m.blurb}
               </p>
@@ -172,7 +170,7 @@ export function StudySelect() {
         variant="green"
         className="self-start text-lg"
       >
-        {starting ? 'Loading…' : '▶ Start Studying'}
+        {starting ? 'Loading…' : 'Start Studying'}
       </Button>
     </div>
   )

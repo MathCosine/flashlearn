@@ -64,7 +64,7 @@ export function MultipleChoice({ cards }: { cards: FlashCard[] }) {
     const pct = score.total > 0 ? Math.round((score.correct / score.total) * 100) : 0
     return (
       <Panel className="mx-auto max-w-md bg-emerald-200 p-8 text-center">
-        <p className="text-2xl font-extrabold text-slate-900">✅ Quiz complete!</p>
+        <p className="text-2xl font-extrabold text-slate-900">Quiz complete!</p>
         <p className="mt-2 font-medium text-slate-700">
           {score.correct} / {score.total} correct ({pct}%)
         </p>
