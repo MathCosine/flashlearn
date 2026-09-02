@@ -1,15 +1,13 @@
 import { bulkCreateCards, createSet } from './api'
-import type { FlashSet } from '../types'
 
-// A small sample set showing how to use the optional extra fields, modeled
-// on the standard "head word on front, full dictionary entry on back"
-// format used for Latin vocabulary flashcards. Not tied to any specific
-// textbook — just enough well-known words to demonstrate the format.
-export async function seedSampleSet(): Promise<FlashSet> {
-  const set = await createSet({
-    name: 'Sample: Latin Vocabulary',
-    description:
-      'A demo set showing the front/back + extra-fields format. Edit or delete freely.',
+/**
+ * A few starter sets that show what the app can do: structured Latin
+ * dictionary entries, LaTeX in a science set, and a plain two-sided set.
+ */
+export async function seedSampleSets(): Promise<void> {
+  const latin = await createSet({
+    name: 'Sample · Latin vocabulary',
+    description: 'Head word on the front, full dictionary entry on the back.',
     category: 'Latin',
     tags: ['sample'],
     extra_fields: [
@@ -18,10 +16,9 @@ export async function seedSampleSet(): Promise<FlashSet> {
       { key: 'family', label: 'Declension / Conjugation' },
       { key: 'derivatives', label: 'English derivatives' },
     ],
-    strict_answers: false,
   })
 
-  await bulkCreateCards(set.id, [
+  await bulkCreateCards(latin.id, [
     {
       front: 'agricola',
       back: 'farmer',
@@ -43,7 +40,7 @@ export async function seedSampleSet(): Promise<FlashSet> {
     },
     {
       front: 'amō',
-      back: 'to love',
+      back: 'to love, to like',
       extra_data: {
         forms: 'amō, amāre, amāvī, amātum',
         family: '1st conjugation verb',
@@ -69,7 +66,47 @@ export async function seedSampleSet(): Promise<FlashSet> {
         derivatives: 'regal, regent',
       },
     },
+    {
+      front: 'terra',
+      back: 'land, earth',
+      extra_data: {
+        forms: 'terra, terrae',
+        gender: 'f',
+        family: '1st declension noun',
+        derivatives: 'terrain, terrestrial',
+      },
+    },
   ])
 
-  return set
+  const physics = await createSet({
+    name: 'Sample · Formulas with math',
+    description:
+      'Shows LaTeX support — write math between dollar signs and it renders properly.',
+    category: 'Science',
+    tags: ['sample'],
+    extra_fields: [{ key: 'note', label: 'Note' }],
+  })
+
+  await bulkCreateCards(physics.id, [
+    {
+      front: "Newton's second law",
+      back: '$F = ma$',
+      extra_data: { note: 'Force equals mass times acceleration' },
+    },
+    {
+      front: 'Quadratic formula',
+      back: '$x = \\frac{-b \\pm \\sqrt{b^2 - 4ac}}{2a}$',
+      extra_data: { note: 'Roots of $ax^2 + bx + c = 0$' },
+    },
+    {
+      front: 'Area of a circle',
+      back: '$A = \\pi r^2$',
+      extra_data: {},
+    },
+    {
+      front: "Euler's identity",
+      back: '$e^{i\\pi} + 1 = 0$',
+      extra_data: {},
+    },
+  ])
 }

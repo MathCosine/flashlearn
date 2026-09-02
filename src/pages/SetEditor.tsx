@@ -1,4 +1,4 @@
-import { type FormEvent, useEffect, useState } from 'react'
+import { type FormEvent, useEffect, useRef, useState } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import {
   bulkCreateCards,
@@ -9,13 +9,18 @@ import {
   listCards,
   updateCard,
   updateSet,
+  uploadCardImage,
 } from '../lib/api'
 import type { ExtraFieldDef, FlashCard } from '../types'
 import { ExtraFieldsEditor } from '../components/ExtraFieldsEditor'
 import { BulkImport } from '../components/BulkImport'
 import { CardEditorRow } from '../components/CardEditorRow'
-import { Button } from '../components/ui/Button'
+import { MacronBar, insertAtCaret } from '../components/MacronBar'
+import { CardImage } from '../components/CardImage'
+import { PageHeader } from '../components/ui/PageHeader'
 import { Panel } from '../components/ui/Panel'
+import { Button } from '../components/ui/Button'
+import { Field, Input, Checkbox } from '../components/ui/Field'
 
 export function SetEditor() {
   const { id } = useParams<{ id: string }>()
@@ -31,18 +36,28 @@ export function SetEditor() {
   const [cards, setCards] = useState<FlashCard[]>([])
   const [loading, setLoading] = useState(!isNew)
   const [saving, setSaving] = useState(false)
+  const [saved, setSaved] = useState(false)
   const [error, setError] = useState<string | null>(null)
 
   const [newFront, setNewFront] = useState('')
   const [newBack, setNewBack] = useState('')
   const [newExtra, setNewExtra] = useState<Record<string, string>>({})
+  const [newImage, setNewImage] = useState<string | null>(null)
   const [addingCard, setAddingCard] = useState(false)
+  const [uploading, setUploading] = useState(false)
+
+  const frontRef = useRef<HTMLInputElement>(null)
+  const backRef = useRef<HTMLInputElement>(null)
+  const lastFocused = useRef<'front' | 'back'>('front')
+  const fileRef = useRef<HTMLInputElement>(null)
 
   useEffect(() => {
     if (isNew || !id) return
+    let active = true
     ;(async () => {
       try {
         const [set, cardList] = await Promise.all([getSet(id), listCards(id)])
+        if (!active) return
         setName(set.name)
         setDescription(set.description ?? '')
         setCategory(set.category ?? '')
@@ -51,11 +66,16 @@ export function SetEditor() {
         setStrictAnswers(set.strict_answers)
         setCards(cardList)
       } catch (err) {
-        setError(err instanceof Error ? err.message : 'Failed to load set')
+        if (active) {
+          setError(err instanceof Error ? err.message : 'Failed to load set')
+        }
       } finally {
-        setLoading(false)
+        if (active) setLoading(false)
       }
     })()
+    return () => {
+      active = false
+    }
   }, [id, isNew])
 
   function parseTags(): string[] {
@@ -89,6 +109,8 @@ export function SetEditor() {
           extra_fields: extraFields,
           strict_answers: strictAnswers,
         })
+        setSaved(true)
+        window.setTimeout(() => setSaved(false), 2000)
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to save set')
@@ -107,11 +129,14 @@ export function SetEditor() {
         front: newFront.trim(),
         back: newBack.trim(),
         extra_data: newExtra,
+        image_url: newImage,
       })
       setCards((prev) => [...prev, card])
       setNewFront('')
       setNewBack('')
       setNewExtra({})
+      setNewImage(null)
+      frontRef.current?.focus()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Failed to add card')
     } finally {
@@ -119,99 +144,109 @@ export function SetEditor() {
     }
   }
 
+  async function handleUpload(file: File) {
+    setUploading(true)
+    try {
+      setNewImage(await uploadCardImage(file))
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Image upload failed')
+    } finally {
+      setUploading(false)
+    }
+  }
+
   if (loading) {
-    return <p className="font-medium text-slate-600">Loading…</p>
+    return <p className="font-medium text-stone-600">Loading…</p>
   }
 
   return (
     <div className="flex flex-col gap-6">
+      <PageHeader
+        title={isNew ? 'New set' : name || 'Edit set'}
+        description={
+          isNew
+            ? 'Give the set a name, then add cards on the next screen.'
+            : `${cards.length} card${cards.length === 1 ? '' : 's'}`
+        }
+        actions={
+          !isNew && id ? (
+            <>
+              <Button to={`/study?sets=${id}`} variant="green">
+                Study this set
+              </Button>
+              <Button to="/" variant="neutral">
+                Done
+              </Button>
+            </>
+          ) : undefined
+        }
+      />
+
+      {error && (
+        <Panel className="bg-rose-200 px-4 py-2">
+          <p className="text-sm font-semibold text-rose-950">{error}</p>
+        </Panel>
+      )}
+
       <Panel className="bg-white p-5">
-        <h1 className="mb-4 text-2xl font-extrabold text-slate-900">
-          {isNew ? 'New Set' : 'Edit Set'}
-        </h1>
-        <form onSubmit={handleSubmit} className="flex flex-col gap-3">
-          <div>
-            <label className="mb-1 block text-sm font-bold text-slate-800">
-              Name
-            </label>
-            <input
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <Field label="Name">
+            <Input
               required
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="e.g. Latin Chapter 3 Vocab"
-              className="w-full rounded-lg border-[3px] border-black bg-white px-3 py-2 font-medium"
+              placeholder="e.g. Latin Chapter 3 vocabulary"
             />
-          </div>
-          <div>
-            <label className="mb-1 block text-sm font-bold text-slate-800">
-              Description
-            </label>
-            <input
+          </Field>
+
+          <Field label="Description">
+            <Input
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               placeholder="Optional"
-              className="w-full rounded-lg border-[3px] border-black bg-white px-3 py-2 font-medium"
             />
-          </div>
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-            <div>
-              <label className="mb-1 block text-sm font-bold text-slate-800">
-                Category
-              </label>
-              <input
+          </Field>
+
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <Field label="Category" hint="Groups sets on your dashboard.">
+              <Input
                 value={category}
                 onChange={(e) => setCategory(e.target.value)}
-                placeholder="e.g. Latin, Chemistry, Spanish"
-                className="w-full rounded-lg border-[3px] border-black bg-white px-3 py-2 font-medium"
+                placeholder="Latin, Chemistry, Spanish…"
               />
-            </div>
-            <div>
-              <label className="mb-1 block text-sm font-bold text-slate-800">
-                Tags (comma separated)
-              </label>
-              <input
+            </Field>
+            <Field label="Tags" hint="Comma separated.">
+              <Input
                 value={tagsInput}
                 onChange={(e) => setTagsInput(e.target.value)}
-                placeholder="e.g. chapter 3, verbs"
-                className="w-full rounded-lg border-[3px] border-black bg-white px-3 py-2 font-medium"
+                placeholder="chapter 3, verbs"
               />
-            </div>
+            </Field>
           </div>
 
           <ExtraFieldsEditor fields={extraFields} onChange={setExtraFields} />
 
-          <label className="flex items-center gap-2 text-sm font-bold text-slate-800">
-            <input
-              type="checkbox"
-              checked={strictAnswers}
-              onChange={(e) => setStrictAnswers(e.target.checked)}
-              className="h-4 w-4"
-            />
-            Strict answer checking in Type mode (exact match, case & accents
-            matter)
-          </label>
+          <Checkbox
+            label="Strict answer checking in typing modes (case and accents must match exactly)"
+            checked={strictAnswers}
+            onChange={(e) => setStrictAnswers(e.target.checked)}
+          />
 
-          {error && (
-            <p className="rounded-lg border-[3px] border-black bg-rose-200 px-3 py-2 text-sm font-semibold text-rose-950">
-              {error}
-            </p>
-          )}
-
-          <div className="flex gap-2">
+          <div className="flex items-center gap-3">
             <Button type="submit" variant="green" disabled={saving}>
-              {saving ? 'Saving…' : isNew ? 'Create Set' : 'Save Changes'}
+              {saving ? 'Saving…' : isNew ? 'Create set' : 'Save changes'}
             </Button>
-            <Button to="/" variant="neutral">
-              Back to My Sets
-            </Button>
+            {saved && (
+              <span className="text-sm font-bold text-emerald-700">Saved</span>
+            )}
           </div>
         </form>
       </Panel>
 
       {!isNew && id && (
         <Panel className="bg-white p-5">
-          <div className="mb-3 flex items-center justify-between">
-            <h2 className="text-xl font-extrabold text-slate-900">
+          <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+            <h2 className="text-xl font-bold text-ink">
               Cards ({cards.length})
             </h2>
             <BulkImport
@@ -225,26 +260,29 @@ export function SetEditor() {
 
           <form
             onSubmit={handleAddCard}
-            className="mb-4 flex flex-col gap-2 rounded-xl border-[3px] border-dashed border-black bg-emerald-50 p-3"
+            className="mb-5 flex flex-col gap-2 rounded-xl border-[3px] border-dashed border-black bg-emerald-50 p-3"
           >
             <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-              <input
+              <Input
+                ref={frontRef}
                 value={newFront}
                 onChange={(e) => setNewFront(e.target.value)}
+                onFocus={() => (lastFocused.current = 'front')}
                 placeholder="Front (e.g. agricola)"
-                className="rounded-lg border-[3px] border-black bg-white px-2 py-1.5 font-medium"
               />
-              <input
+              <Input
+                ref={backRef}
                 value={newBack}
                 onChange={(e) => setNewBack(e.target.value)}
+                onFocus={() => (lastFocused.current = 'back')}
                 placeholder="Back (e.g. farmer)"
-                className="rounded-lg border-[3px] border-black bg-white px-2 py-1.5 font-medium"
               />
             </div>
+
             {extraFields.length > 0 && (
               <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {extraFields.map((f) => (
-                  <input
+                  <Input
                     key={f.key}
                     value={newExtra[f.key] ?? ''}
                     onChange={(e) =>
@@ -254,26 +292,66 @@ export function SetEditor() {
                       }))
                     }
                     placeholder={f.label}
-                    className="rounded-lg border-[3px] border-black bg-white px-2 py-1.5 text-sm font-medium"
+                    className="text-sm"
                   />
                 ))}
               </div>
             )}
-            <Button
-              type="submit"
-              variant="green"
-              size="sm"
-              disabled={addingCard || !newFront.trim() || !newBack.trim()}
-              className="self-start"
-            >
-              {addingCard ? 'Adding…' : '+ Add Card'}
-            </Button>
+
+            <MacronBar
+              onInsert={(char) => {
+                if (lastFocused.current === 'back') {
+                  insertAtCaret(backRef.current, char, setNewBack)
+                } else {
+                  insertAtCaret(frontRef.current, char, setNewFront)
+                }
+              }}
+            />
+
+            <div className="flex flex-wrap items-center gap-2">
+              <input
+                ref={fileRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={(e) => {
+                  const file = e.target.files?.[0]
+                  if (file) void handleUpload(file)
+                  e.target.value = ''
+                }}
+              />
+              {newImage && <CardImage path={newImage} className="h-12 w-12" />}
+              <Button
+                type="button"
+                onClick={() => fileRef.current?.click()}
+                variant="neutral"
+                size="sm"
+                disabled={uploading}
+              >
+                {uploading ? 'Uploading…' : newImage ? 'Replace image' : 'Add image'}
+              </Button>
+              <Button
+                type="submit"
+                variant="green"
+                size="sm"
+                disabled={addingCard || !newFront.trim() || !newBack.trim()}
+                className="ml-auto"
+              >
+                {addingCard ? 'Adding…' : 'Add card'}
+              </Button>
+            </div>
+
+            <p className="text-xs font-medium text-stone-500">
+              Tip: wrap math in dollar signs — <code>$x^2$</code> — and it
+              renders as real math on the card.
+            </p>
           </form>
 
           <div className="flex flex-col gap-2">
             {cards.length === 0 ? (
-              <p className="font-medium text-slate-500">
-                No cards yet — add one above, or bulk import.
+              <p className="py-4 text-center font-medium text-stone-500">
+                No cards yet. Add one above, or use Import cards to paste a
+                whole list.
               </p>
             ) : (
               cards.map((card) => (

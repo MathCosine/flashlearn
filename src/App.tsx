@@ -2,14 +2,21 @@ import { HashRouter, Navigate, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import { Layout } from './components/Layout'
 import { ProtectedRoute } from './components/ProtectedRoute'
+import { isConfigured } from './lib/supabaseClient'
 import { Login } from './pages/Login'
 import { Signup } from './pages/Signup'
 import { Home } from './pages/Home'
 import { SetEditor } from './pages/SetEditor'
 import { StudySelect } from './pages/StudySelect'
 import { StudySession } from './pages/StudySession'
+import { Stats } from './pages/Stats'
+import { SetupNeeded } from './pages/SetupNeeded'
 
 export default function App() {
+  if (!isConfigured) {
+    return <SetupNeeded />
+  }
+
   return (
     <AuthProvider>
       <HashRouter>
@@ -47,6 +54,14 @@ export default function App() {
               element={
                 <ProtectedRoute>
                   <StudySession />
+                </ProtectedRoute>
+              }
+            />
+            <Route
+              path="/stats"
+              element={
+                <ProtectedRoute>
+                  <Stats />
                 </ProtectedRoute>
               }
             />

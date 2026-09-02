@@ -1,16 +1,29 @@
 @import 'tailwindcss';
 
+@theme {
+  --font-sans: 'Space Grotesk', ui-sans-serif, system-ui, sans-serif;
+
+  /* Hard offset shadows — the core of the app's look */
+  --shadow-hard-sm: 2px 2px 0 0 #000;
+  --shadow-hard: 4px 4px 0 0 #000;
+  --shadow-hard-lg: 6px 6px 0 0 #000;
+  --shadow-hard-xl: 10px 10px 0 0 #000;
+
+  --color-cream: #fdfbf4;
+  --color-ink: #14141b;
+}
+
 :root {
   color-scheme: light;
 }
 
 body {
   margin: 0;
-  font-family: system-ui, 'Segoe UI', Roboto, sans-serif;
-  background-color: #fdfaf1;
-  background-image: radial-gradient(#d8d3c0 1px, transparent 1px);
-  background-size: 22px 22px;
-  color: #1f2028;
+  background-color: var(--color-cream);
+  background-image: radial-gradient(#d9d3bd 1px, transparent 1px);
+  background-size: 24px 24px;
+  color: var(--color-ink);
+  -webkit-font-smoothing: antialiased;
 }
 
 #root {
@@ -19,13 +32,36 @@ body {
   flex-direction: column;
 }
 
+/* Inputs inherit the border/shadow language from one place. */
+.fl-input {
+  width: 100%;
+  border-radius: 0.625rem;
+  border: 3px solid #000;
+  background: #fff;
+  padding: 0.5rem 0.75rem;
+  font-weight: 500;
+  font-family: inherit;
+  font-size: 1rem;
+  color: var(--color-ink);
+}
+
+.fl-input:focus {
+  outline: none;
+  box-shadow: var(--shadow-hard-sm);
+}
+
+.fl-input::placeholder {
+  color: #9a9689;
+}
+
+/* 3D flip card */
 .flip-card {
   perspective: 1600px;
 }
 
 .flip-card-inner {
   transform-style: preserve-3d;
-  transition: transform 0.5s cubic-bezier(0.4, 0.2, 0.2, 1);
+  transition: transform 0.45s cubic-bezier(0.4, 0.2, 0.2, 1);
 }
 
 .flip-card.flipped .flip-card-inner {
@@ -34,8 +70,66 @@ body {
 
 .flip-card-face {
   backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
 }
 
 .flip-card-back {
   transform: rotateY(180deg);
+}
+
+/* Feedback animations */
+@keyframes fl-shake {
+  0%, 100% { transform: translateX(0); }
+  25% { transform: translateX(-6px); }
+  75% { transform: translateX(6px); }
+}
+
+.animate-shake {
+  animation: fl-shake 0.3s ease-in-out;
+}
+
+@keyframes fl-pop {
+  0% { transform: scale(0.9); }
+  60% { transform: scale(1.04); }
+  100% { transform: scale(1); }
+}
+
+.animate-pop {
+  animation: fl-pop 0.22s ease-out;
+}
+
+@keyframes fl-float {
+  0%, 100% { transform: translateY(0) rotate(-2deg); }
+  50% { transform: translateY(-10px) rotate(-2deg); }
+}
+
+.animate-float {
+  animation: fl-float 5s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .flip-card-inner,
+  .animate-shake,
+  .animate-pop,
+  .animate-float {
+    animation: none;
+    transition: none;
+  }
+}
+
+/* Hero card that flips on its own to show the product at a glance */
+@keyframes fl-autoflip {
+  0%, 38% { transform: rotateY(0deg); }
+  50%, 88% { transform: rotateY(180deg); }
+  100% { transform: rotateY(360deg); }
+}
+
+.animate-autoflip {
+  animation: fl-autoflip 7s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-autoflip {
+    animation: none;
+  }
 }

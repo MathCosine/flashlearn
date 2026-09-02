@@ -1,117 +1,157 @@
-import { type FormEvent, useState } from 'react'
-import type { FlashCard, FlashSet } from '../../types'
-import { shuffle } from '../../utils/shuffle'
+import { type FormEvent, useRef, useState } from 'react'
+import type { StudyModeProps } from '../../types'
 import { isAnswerCorrect } from '../../utils/answerCheck'
+import { RichText } from '../../components/RichText'
+import { CardImage } from '../../components/CardImage'
+import { MacronBar, insertAtCaret } from '../../components/MacronBar'
 import { Button } from '../../components/ui/Button'
 import { Panel } from '../../components/ui/Panel'
+import { Progress } from '../../components/ui/Progress'
+import { SessionSummary } from '../../components/SessionSummary'
+import { sounds } from '../../lib/sound'
 
 export function TypeAnswer({
-  cards,
+  items,
   setById,
-}: {
-  cards: FlashCard[]
-  setById: Map<string, FlashSet>
-}) {
-  const [order] = useState(() => shuffle(cards))
+  record,
+  onFinish,
+}: StudyModeProps) {
   const [index, setIndex] = useState(0)
   const [guess, setGuess] = useState('')
   const [result, setResult] = useState<'correct' | 'wrong' | null>(null)
-  const [score, setScore] = useState({ correct: 0, total: 0 })
+  const [totals, setTotals] = useState({ studied: 0, correct: 0 })
   const [finished, setFinished] = useState(false)
+  const inputRef = useRef<HTMLInputElement>(null)
 
-  const current = order[index]
-  const strict = setById.get(current?.set_id ?? '')?.strict_answers ?? false
+  const current = items[index]
+  const strict = setById.get(current?.card.set_id ?? '')?.strict_answers ?? false
 
-  function handleSubmit(e: FormEvent) {
+  function check(e: FormEvent) {
     e.preventDefault()
-    if (result) return
-    const ok = isAnswerCorrect(guess, current.back, strict)
+    if (result || !current) return
+    const ok = isAnswerCorrect(guess, current.answer, strict)
     setResult(ok ? 'correct' : 'wrong')
-    setScore((s) => ({ correct: s.correct + (ok ? 1 : 0), total: s.total + 1 }))
+    record(current.card.id, { correct: ok })
+    if (ok) sounds.correct()
+    else sounds.wrong()
+    setTotals((t) => ({
+      studied: t.studied + 1,
+      correct: t.correct + (ok ? 1 : 0),
+    }))
   }
 
   function next() {
-    if (index + 1 >= order.length) {
+    if (index + 1 >= items.length) {
       setFinished(true)
+      onFinish(totals)
       return
     }
     setIndex((i) => i + 1)
     setGuess('')
     setResult(null)
+    requestAnimationFrame(() => inputRef.current?.focus())
   }
 
   function restart() {
     setIndex(0)
     setGuess('')
     setResult(null)
-    setScore({ correct: 0, total: 0 })
+    setTotals({ studied: 0, correct: 0 })
     setFinished(false)
   }
 
   if (finished) {
-    const pct = score.total > 0 ? Math.round((score.correct / score.total) * 100) : 0
     return (
-      <Panel className="mx-auto max-w-md bg-emerald-200 p-8 text-center">
-        <p className="text-2xl font-extrabold text-slate-900">Done!</p>
-        <p className="mt-2 font-medium text-slate-700">
-          {score.correct} / {score.total} correct ({pct}%)
-        </p>
-        <Button onClick={restart} variant="green" className="mt-4">
-          Try again
-        </Button>
-      </Panel>
+      <SessionSummary
+        title="Typing round done"
+        studied={totals.studied}
+        correct={totals.correct}
+        onRestart={restart}
+      />
     )
   }
 
   return (
-    <div className="flex flex-col items-center gap-5">
-      <p className="font-bold text-slate-700">
-        Card {index + 1} of {order.length} · Score: {score.correct}/
-        {score.total}
-      </p>
-      <Panel className="w-full max-w-md bg-amber-100 p-6 text-center">
-        <p className="text-2xl font-extrabold text-slate-900">
-          {current.front}
+    <div className="flex w-full flex-col items-center gap-5">
+      <div className="w-full max-w-xl">
+        <div className="mb-2 flex justify-between text-sm font-bold text-stone-600">
+          <span>
+            Card {index + 1} of {items.length}
+          </span>
+          <span>
+            {totals.correct}/{totals.studied} correct
+          </span>
+        </div>
+        <Progress value={index} max={items.length} />
+      </div>
+
+      <Panel className="w-full max-w-xl bg-amber-200 p-8 text-center">
+        {current.card.image_url && !current.reversed && (
+          <CardImage
+            path={current.card.image_url}
+            className="mx-auto mb-3 max-h-32"
+          />
+        )}
+        <p className="text-3xl font-bold text-ink">
+          <RichText text={current.prompt} />
         </p>
       </Panel>
 
-      <form onSubmit={handleSubmit} className="flex w-full max-w-md flex-col gap-3">
+      <form onSubmit={check} className="flex w-full max-w-xl flex-col gap-3">
         <input
+          ref={inputRef}
           autoFocus
           value={guess}
           onChange={(e) => setGuess(e.target.value)}
-          disabled={!!result}
+          disabled={Boolean(result)}
           placeholder="Type the answer…"
-          className="rounded-lg border-[3px] border-black bg-white px-3 py-2 text-lg font-medium disabled:opacity-70"
+          className="fl-input text-lg"
+          autoComplete="off"
+          autoCorrect="off"
+          spellCheck={false}
         />
+
+        {!result && (
+          <MacronBar
+            onInsert={(char) =>
+              insertAtCaret(inputRef.current, char, setGuess)
+            }
+          />
+        )}
+
         {!result ? (
-          <Button type="submit" variant="yellow" disabled={!guess.trim()}>
+          <Button type="submit" variant="yellow" size="lg" disabled={!guess.trim()}>
             Check
           </Button>
         ) : (
           <>
-            <p
-              className={`rounded-lg border-[3px] border-black px-3 py-2 text-center font-bold ${
-                result === 'correct' ? 'bg-emerald-300' : 'bg-rose-300'
+            <div
+              className={`rounded-xl border-[3px] border-black px-4 py-3 text-center font-bold shadow-hard ${
+                result === 'correct'
+                  ? 'bg-emerald-300'
+                  : 'animate-shake bg-rose-300'
               }`}
             >
-              {result === 'correct'
-                ? 'Correct!'
-                : `Correct answer: ${current.back}`}
-            </p>
-            <Button type="button" onClick={next} variant="blue">
-              {index + 1 >= order.length ? 'See results' : 'Next →'}
+              {result === 'correct' ? (
+                'Correct'
+              ) : (
+                <span>
+                  Answer: <RichText text={current.answer} />
+                </span>
+              )}
+            </div>
+            <Button type="button" onClick={next} variant="blue" size="lg" autoFocus>
+              {index + 1 >= items.length ? 'See results' : 'Next →'}
             </Button>
           </>
         )}
       </form>
 
-      {!strict && (
-        <p className="text-xs font-medium text-slate-500">
-          Lenient mode: capitalization, extra spaces, and accents don't need
-          to be exact.
-        </p>
-      )}
+      <p className="text-xs font-medium text-stone-500">
+        {strict
+          ? 'Strict checking is on for this set — spelling, case and accents must match.'
+          : 'Capitalization, spacing and accents are forgiving, and any one of several comma-separated meanings counts.'}
+      </p>
     </div>
   )
 }

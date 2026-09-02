@@ -1,116 +1,165 @@
 import { useState } from 'react'
-import type { FlashCard, FlashSet } from '../../types'
+import type { StudyItem, StudyModeProps } from '../../types'
 import { shuffle } from '../../utils/shuffle'
 import { FlashCardView } from '../../components/FlashCardView'
 import { Button } from '../../components/ui/Button'
 import { Panel } from '../../components/ui/Panel'
+import { Badge } from '../../components/ui/Badge'
+import { useKey } from '../../hooks/useKey'
+import { sounds } from '../../lib/sound'
 
 export function StackMethod({
-  cards,
+  items,
   setById,
-}: {
-  cards: FlashCard[]
-  setById: Map<string, FlashSet>
-}) {
-  const [queue, setQueue] = useState<FlashCard[]>(() => shuffle(cards))
-  const [notYetPile, setNotYetPile] = useState<FlashCard[]>([])
+  progressByCard,
+  record,
+  onFinish,
+}: StudyModeProps) {
+  const [queue, setQueue] = useState<StudyItem[]>(() => shuffle(items))
+  const [notYet, setNotYet] = useState<StudyItem[]>([])
   const [round, setRound] = useState(1)
   const [knownThisRound, setKnownThisRound] = useState(0)
+  const [totals, setTotals] = useState({ studied: 0, correct: 0 })
   const [flipped, setFlipped] = useState(false)
   const [finished, setFinished] = useState(false)
 
   const current = queue[0]
+  const progress = current ? progressByCard[current.card.id] : undefined
 
   function advance(knewIt: boolean) {
+    if (!current) return
+    record(current.card.id, { correct: knewIt })
+    if (knewIt) sounds.correct()
+    else sounds.wrong()
+
+    const nextTotals = {
+      studied: totals.studied + 1,
+      correct: totals.correct + (knewIt ? 1 : 0),
+    }
+    setTotals(nextTotals)
+
     const rest = queue.slice(1)
-    const nextNotYet = knewIt ? notYetPile : [...notYetPile, current]
+    const nextNotYet = knewIt ? notYet : [...notYet, current]
+    if (knewIt) setKnownThisRound((k) => k + 1)
     setFlipped(false)
 
     if (rest.length > 0) {
       setQueue(rest)
-      setNotYetPile(nextNotYet)
-      if (knewIt) setKnownThisRound((k) => k + 1)
+      setNotYet(nextNotYet)
       return
     }
 
-    if (knewIt) setKnownThisRound((k) => k + 1)
-
     if (nextNotYet.length === 0) {
-      setFinished(true)
       setQueue([])
-      setNotYetPile([])
-    } else {
-      setQueue(shuffle(nextNotYet))
-      setNotYetPile([])
-      setRound((r) => r + 1)
-      setKnownThisRound(0)
+      setNotYet([])
+      setFinished(true)
+      onFinish(nextTotals)
+      return
     }
+
+    // Round over, but cards remain: start again with just the "not yet" pile.
+    setQueue(shuffle(nextNotYet))
+    setNotYet([])
+    setRound((r) => r + 1)
+    setKnownThisRound(0)
   }
 
+  useKey(['Space', '1', '2'], (key) => {
+    if (key === 'Space') {
+      sounds.flip()
+      setFlipped((f) => !f)
+    } else if (flipped) {
+      advance(key === '2')
+    }
+  }, !finished)
+
   function restart() {
-    setQueue(shuffle(cards))
-    setNotYetPile([])
+    setQueue(shuffle(items))
+    setNotYet([])
     setRound(1)
     setKnownThisRound(0)
+    setTotals({ studied: 0, correct: 0 })
     setFlipped(false)
     setFinished(false)
   }
 
   if (finished) {
     return (
-      <Panel className="mx-auto max-w-md bg-emerald-200 p-8 text-center">
-        <p className="text-2xl font-extrabold text-slate-900">
-          All {cards.length} cards known!
+      <Panel raised className="mx-auto max-w-md bg-emerald-200 p-8 text-center">
+        <p className="text-2xl font-bold text-ink">
+          Every card is in the known pile
         </p>
-        <p className="mt-2 font-medium text-slate-700">
-          It took {round} round{round === 1 ? '' : 's'} through the stack.
+        <p className="mt-2 font-medium text-stone-700">
+          It took {round} round{round === 1 ? '' : 's'} and{' '}
+          {totals.studied} look
+          {totals.studied === 1 ? '' : 's'} to clear all {items.length} cards.
         </p>
-        <Button onClick={restart} variant="green" className="mt-4">
-          Study again
-        </Button>
+        <div className="mt-5 flex justify-center gap-2">
+          <Button onClick={restart} variant="green">
+            Study again
+          </Button>
+          <Button to="/study" variant="neutral">
+            Change mode
+          </Button>
+        </div>
       </Panel>
     )
   }
 
   return (
     <div className="flex flex-col items-center gap-5">
-      <div className="flex flex-wrap justify-center gap-4 text-sm font-bold">
-        <span className="rounded-full border-2 border-black bg-sky-200 px-3 py-1">
-          Round {round}
-        </span>
-        <span className="rounded-full border-2 border-black bg-white px-3 py-1">
-          {queue.length} left this round
-        </span>
-        <span className="rounded-full border-2 border-black bg-emerald-200 px-3 py-1">
-          {knownThisRound} known so far
-        </span>
-        <span className="rounded-full border-2 border-black bg-rose-200 px-3 py-1">
-          {notYetPile.length} in "not yet" pile
-        </span>
+      <div className="flex flex-wrap justify-center gap-2">
+        <Badge className="bg-sky-200 text-sky-950">Round {round}</Badge>
+        <Badge>{queue.length} left this round</Badge>
+        <Badge className="bg-emerald-200 text-emerald-950">
+          {knownThisRound} known
+        </Badge>
+        <Badge className="bg-rose-200 text-rose-950">
+          {notYet.length} not yet
+        </Badge>
       </div>
 
       <FlashCardView
-        key={current.id}
-        card={current}
-        set={setById.get(current.set_id)}
+        key={current.card.id}
+        item={current}
+        set={setById.get(current.card.set_id)}
         flipped={flipped}
-        onFlip={() => setFlipped((f) => !f)}
+        onFlip={() => {
+          sounds.flip()
+          setFlipped((f) => !f)
+        }}
+        starred={progress?.starred}
+        dots={progress?.dots ?? 0}
+        onToggleStar={() =>
+          record(current.card.id, { starred: !progress?.starred })
+        }
       />
 
       {!flipped ? (
-        <Button onClick={() => setFlipped(true)} variant="yellow">
+        <Button
+          onClick={() => {
+            sounds.flip()
+            setFlipped(true)
+          }}
+          variant="yellow"
+          size="lg"
+        >
           Flip to check
         </Button>
       ) : (
         <div className="flex gap-3">
-          <Button onClick={() => advance(false)} variant="red">
+          <Button onClick={() => advance(false)} variant="red" size="lg">
             Not yet
           </Button>
-          <Button onClick={() => advance(true)} variant="green">
-            Knew it
+          <Button onClick={() => advance(true)} variant="green" size="lg">
+            I knew it
           </Button>
         </div>
       )}
+
+      <p className="text-xs font-medium text-stone-500">
+        Space flips · 1 = not yet · 2 = knew it
+      </p>
     </div>
   )
 }

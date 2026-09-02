@@ -1,123 +1,128 @@
-import { useEffect, useMemo, useState } from 'react'
-import type { FlashCard, FlashSet } from '../../types'
-import { listProgressForCards, upsertProgress } from '../../lib/api'
-import { shuffle } from '../../utils/shuffle'
+import { useState } from 'react'
+import type { StudyModeProps } from '../../types'
 import { FlashCardView } from '../../components/FlashCardView'
 import { Button } from '../../components/ui/Button'
+import { Badge } from '../../components/ui/Badge'
+import { useKey } from '../../hooks/useKey'
+import { sounds } from '../../lib/sound'
 
 export function DotMethod({
-  cards,
+  items,
   setById,
-}: {
-  cards: FlashCard[]
-  setById: Map<string, FlashSet>
-}) {
-  const [dotsByCard, setDotsByCard] = useState<Record<string, number>>({})
-  const [loaded, setLoaded] = useState(false)
-  const [focusStubborn, setFocusStubborn] = useState(false)
-  const [order, setOrder] = useState<FlashCard[]>(() => shuffle(cards))
+  progressByCard,
+  record,
+  onFinish,
+}: StudyModeProps) {
   const [index, setIndex] = useState(0)
   const [flipped, setFlipped] = useState(false)
+  const [totals, setTotals] = useState({ studied: 0, correct: 0 })
+  const [passes, setPasses] = useState(1)
 
-  useEffect(() => {
-    listProgressForCards(cards.map((c) => c.id)).then((progress) => {
-      const map: Record<string, number> = {}
-      progress.forEach((p) => {
-        map[p.card_id] = p.dots
-      })
-      setDotsByCard(map)
-      setLoaded(true)
-    })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  const activeCards = useMemo(() => {
-    const pool = focusStubborn
-      ? cards.filter((c) => (dotsByCard[c.id] ?? 0) >= 3)
-      : cards
-    return pool
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [focusStubborn, cards, loaded])
-
-  useEffect(() => {
-    setOrder(shuffle(activeCards))
-    setIndex(0)
-    setFlipped(false)
-  }, [activeCards])
-
-  if (!loaded) return <p className="font-medium text-slate-600">Loading progress…</p>
-
-  if (order.length === 0) {
-    return (
-      <p className="font-medium text-slate-600">
-        No cards with 3+ dots yet — nice! Toggle back to "All cards".
-      </p>
-    )
-  }
-
-  const current = order[index % order.length]
-  const currentDots = dotsByCard[current.id] ?? 0
+  const current = items[index]
+  const progress = current ? progressByCard[current.card.id] : undefined
+  const dots = progress?.dots ?? 0
 
   function next() {
     setFlipped(false)
-    setIndex((i) => (i + 1) % order.length)
+    const upcoming = index + 1
+    if (upcoming >= items.length) {
+      setIndex(0)
+      setPasses((p) => p + 1)
+    } else {
+      setIndex(upcoming)
+    }
   }
 
-  async function markGotIt() {
-    await upsertProgress({ card_id: current.id, known: true })
+  function answer(gotIt: boolean) {
+    if (!current) return
+    record(current.card.id, { correct: gotIt, addDot: !gotIt })
+    if (gotIt) sounds.correct()
+    else sounds.wrong()
+    setTotals((t) => ({
+      studied: t.studied + 1,
+      correct: t.correct + (gotIt ? 1 : 0),
+    }))
     next()
   }
 
-  async function addDot() {
-    const newDots = currentDots + 1
-    setDotsByCard((prev) => ({ ...prev, [current.id]: newDots }))
-    await upsertProgress({ card_id: current.id, dots: newDots, known: false })
-    next()
-  }
+  useKey(['Space', '1', '2'], (key) => {
+    if (key === 'Space') {
+      sounds.flip()
+      setFlipped((f) => !f)
+    } else if (flipped) {
+      answer(key === '2')
+    }
+  })
+
+  const totalDots = Object.values(progressByCard).reduce(
+    (sum, p) => sum + (p?.dots ?? 0),
+    0,
+  )
 
   return (
     <div className="flex flex-col items-center gap-5">
-      <label className="flex items-center gap-2 text-sm font-bold text-slate-800">
-        <input
-          type="checkbox"
-          checked={focusStubborn}
-          onChange={(e) => setFocusStubborn(e.target.checked)}
-          className="h-4 w-4"
-        />
-        Focus on stubborn cards (3+ dots) only
-      </label>
-
-      <div className="flex items-center gap-2">
-        <span className="rounded-full border-2 border-black bg-white px-3 py-1 text-sm font-bold">
-          Card {index + 1} of {order.length} (loops indefinitely)
-        </span>
-        <span className="rounded-full border-2 border-black bg-rose-200 px-3 py-1 text-sm font-bold">
-          {'●'.repeat(currentDots) || '0'} dot{currentDots === 1 ? '' : 's'}
-        </span>
+      <div className="flex flex-wrap justify-center gap-2">
+        <Badge>
+          Card {index + 1} of {items.length}
+        </Badge>
+        <Badge className="bg-sky-200 text-sky-950">Pass {passes}</Badge>
+        <Badge className="bg-rose-200 text-rose-950">
+          {dots} dot{dots === 1 ? '' : 's'} on this card
+        </Badge>
+        <Badge className="bg-white">{totalDots} dots total</Badge>
       </div>
 
       <FlashCardView
-        key={current.id}
-        card={current}
-        set={setById.get(current.set_id)}
+        key={`${current.card.id}-${index}`}
+        item={current}
+        set={setById.get(current.card.set_id)}
         flipped={flipped}
-        onFlip={() => setFlipped((f) => !f)}
+        onFlip={() => {
+          sounds.flip()
+          setFlipped((f) => !f)
+        }}
+        starred={progress?.starred}
+        dots={dots}
+        onToggleStar={() =>
+          record(current.card.id, { starred: !progress?.starred })
+        }
       />
 
       {!flipped ? (
-        <Button onClick={() => setFlipped(true)} variant="yellow">
+        <Button
+          onClick={() => {
+            sounds.flip()
+            setFlipped(true)
+          }}
+          variant="yellow"
+          size="lg"
+        >
           Flip to check
         </Button>
       ) : (
         <div className="flex gap-3">
-          <Button onClick={addDot} variant="red">
-            Add a dot (didn't know it)
+          <Button onClick={() => answer(false)} variant="red" size="lg">
+            Add a dot
           </Button>
-          <Button onClick={markGotIt} variant="green">
+          <Button onClick={() => answer(true)} variant="green" size="lg">
             Got it
           </Button>
         </div>
       )}
+
+      <div className="flex flex-col items-center gap-2">
+        <p className="text-xs font-medium text-stone-500">
+          This mode loops forever — dots are saved to your account as you go.
+        </p>
+        <Button
+          onClick={() => onFinish(totals)}
+          variant="neutral"
+          size="sm"
+          disabled={totals.studied === 0}
+        >
+          End session
+        </Button>
+      </div>
     </div>
   )
 }

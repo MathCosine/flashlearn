@@ -1,130 +1,183 @@
 import { useEffect, useRef, useState } from 'react'
-import type { FlashCard, FlashSet } from '../../types'
-import { shuffle } from '../../utils/shuffle'
+import type { StudyModeProps } from '../../types'
 import { FlashCardView } from '../../components/FlashCardView'
 import { Button } from '../../components/ui/Button'
 import { Panel } from '../../components/ui/Panel'
+import { Badge } from '../../components/ui/Badge'
+import { Progress } from '../../components/ui/Progress'
+import { SessionSummary } from '../../components/SessionSummary'
+import { useKey } from '../../hooks/useKey'
+import { sounds } from '../../lib/sound'
 
-const DURATION_SECONDS = 5 * 60
+const DURATIONS = [60, 180, 300] as const
 
 export function SpeedRound({
-  cards,
+  items,
   setById,
-}: {
-  cards: FlashCard[]
-  setById: Map<string, FlashSet>
-}) {
+  progressByCard,
+  record,
+  onFinish,
+}: StudyModeProps) {
+  const [duration, setDuration] = useState<number>(300)
   const [phase, setPhase] = useState<'ready' | 'running' | 'done'>('ready')
-  const [timeLeft, setTimeLeft] = useState(DURATION_SECONDS)
-  const [order, setOrder] = useState<FlashCard[]>(() => shuffle(cards))
+  const [timeLeft, setTimeLeft] = useState(duration)
   const [index, setIndex] = useState(0)
   const [flipped, setFlipped] = useState(false)
-  const [reviewed, setReviewed] = useState(0)
-  const [correct, setCorrect] = useState(0)
-  const intervalRef = useRef<number | null>(null)
+  const [totals, setTotals] = useState({ studied: 0, correct: 0 })
+  const totalsRef = useRef(totals)
+  totalsRef.current = totals
 
   useEffect(() => {
     if (phase !== 'running') return
-    intervalRef.current = window.setInterval(() => {
+    const id = window.setInterval(() => {
       setTimeLeft((t) => {
-        if (t <= 1) {
-          window.clearInterval(intervalRef.current!)
-          setPhase('done')
-          return 0
-        }
+        if (t <= 1) return 0
+        if (t <= 6) sounds.tick()
         return t - 1
       })
     }, 1000)
-    return () => {
-      if (intervalRef.current) window.clearInterval(intervalRef.current)
-    }
+    return () => window.clearInterval(id)
   }, [phase])
 
+  // Ending the round lives in its own effect rather than inside the state
+  // updater, which React may run more than once per tick.
+  useEffect(() => {
+    if (phase === 'running' && timeLeft === 0) {
+      setPhase('done')
+      onFinish(totalsRef.current)
+    }
+    // onFinish is stable for the life of the session.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [phase, timeLeft])
+
   function start() {
-    setOrder(shuffle(cards))
+    setTimeLeft(duration)
     setIndex(0)
     setFlipped(false)
-    setReviewed(0)
-    setCorrect(0)
-    setTimeLeft(DURATION_SECONDS)
+    setTotals({ studied: 0, correct: 0 })
     setPhase('running')
   }
 
+  const current = items[index % items.length]
+  const progress = current ? progressByCard[current.card.id] : undefined
+
   function grade(knewIt: boolean) {
-    setReviewed((r) => r + 1)
-    if (knewIt) setCorrect((c) => c + 1)
+    if (!current) return
+    record(current.card.id, { correct: knewIt })
+    if (knewIt) sounds.correct()
+    else sounds.wrong()
+    setTotals((t) => ({
+      studied: t.studied + 1,
+      correct: t.correct + (knewIt ? 1 : 0),
+    }))
     setFlipped(false)
-    setIndex((i) => (i + 1) % order.length)
+    setIndex((i) => i + 1)
   }
 
-  const minutes = Math.floor(timeLeft / 60)
-  const seconds = timeLeft % 60
+  useKey(['Space', '1', '2'], (key) => {
+    if (key === 'Space') {
+      sounds.flip()
+      setFlipped((f) => !f)
+    } else if (flipped) {
+      grade(key === '2')
+    }
+  }, phase === 'running')
 
   if (phase === 'ready') {
     return (
-      <Panel className="mx-auto max-w-md bg-yellow-100 p-8 text-center">
-        <p className="text-2xl font-extrabold text-slate-900">Speed Round</p>
-        <p className="mt-2 font-medium text-slate-700">
-          5 minutes, shuffled cards, self-graded. Great for a quick daily
-          review. Ready?
+      <Panel raised className="mx-auto max-w-md bg-amber-100 p-8 text-center">
+        <p className="text-2xl font-bold text-ink">Speed Round</p>
+        <p className="mt-2 font-medium text-stone-700">
+          Shuffled cards against a clock. Grade yourself fast and keep moving.
         </p>
-        <Button onClick={start} variant="green" className="mt-4">
-          Start 5-minute round
+        <div className="mt-5 flex justify-center gap-2">
+          {DURATIONS.map((d) => (
+            <Badge
+              key={d}
+              active={duration === d}
+              onClick={() => setDuration(d)}
+            >
+              {d / 60} min
+            </Badge>
+          ))}
+        </div>
+        <Button onClick={start} variant="green" size="lg" className="mt-5">
+          Start
         </Button>
       </Panel>
     )
   }
 
   if (phase === 'done') {
-    const accuracy = reviewed > 0 ? Math.round((correct / reviewed) * 100) : 0
     return (
-      <Panel className="mx-auto max-w-md bg-emerald-200 p-8 text-center">
-        <p className="text-2xl font-extrabold text-slate-900">Time's up!</p>
-        <p className="mt-2 font-medium text-slate-700">
-          Reviewed {reviewed} card{reviewed === 1 ? '' : 's'} — {correct}{' '}
-          correct ({accuracy}%)
-        </p>
-        <Button onClick={start} variant="green" className="mt-4">
-          Go again
-        </Button>
-      </Panel>
+      <SessionSummary
+        title="Time's up"
+        studied={totals.studied}
+        correct={totals.correct}
+        onRestart={start}
+      />
     )
   }
 
-  const current = order[index]
+  const minutes = Math.floor(timeLeft / 60)
+  const seconds = timeLeft % 60
+  const urgent = timeLeft <= 10
 
   return (
     <div className="flex flex-col items-center gap-5">
-      <div className="flex gap-3 text-sm font-bold">
-        <span className="rounded-full border-2 border-black bg-rose-200 px-4 py-1 text-lg tabular-nums">
-          {minutes}:{seconds.toString().padStart(2, '0')}
-        </span>
-        <span className="rounded-full border-2 border-black bg-white px-3 py-1">
-          Reviewed: {reviewed}
-        </span>
-        <span className="rounded-full border-2 border-black bg-emerald-200 px-3 py-1">
-          Correct: {correct}
-        </span>
+      <div className="w-full max-w-xl">
+        <div className="mb-2 flex items-center justify-between">
+          <span
+            className={`rounded-xl border-[3px] border-black px-4 py-1 text-2xl font-bold tabular-nums shadow-hard-sm ${
+              urgent ? 'animate-pop bg-rose-300' : 'bg-white'
+            }`}
+          >
+            {minutes}:{seconds.toString().padStart(2, '0')}
+          </span>
+          <div className="flex gap-2">
+            <Badge className="bg-white">{totals.studied} seen</Badge>
+            <Badge className="bg-emerald-200 text-emerald-950">
+              {totals.correct} correct
+            </Badge>
+          </div>
+        </div>
+        <Progress
+          value={timeLeft}
+          max={duration}
+          tone={urgent ? 'bg-rose-400' : 'bg-amber-400'}
+        />
       </div>
 
       <FlashCardView
-        key={current.id}
-        card={current}
-        set={setById.get(current.set_id)}
+        key={`${current.card.id}-${index}`}
+        item={current}
+        set={setById.get(current.card.set_id)}
         flipped={flipped}
-        onFlip={() => setFlipped((f) => !f)}
+        onFlip={() => {
+          sounds.flip()
+          setFlipped((f) => !f)
+        }}
+        starred={progress?.starred}
+        dots={progress?.dots ?? 0}
       />
 
       {!flipped ? (
-        <Button onClick={() => setFlipped(true)} variant="yellow">
+        <Button
+          onClick={() => {
+            sounds.flip()
+            setFlipped(true)
+          }}
+          variant="yellow"
+          size="lg"
+        >
           Flip
         </Button>
       ) : (
         <div className="flex gap-3">
-          <Button onClick={() => grade(false)} variant="red">
+          <Button onClick={() => grade(false)} variant="red" size="lg">
             Missed it
           </Button>
-          <Button onClick={() => grade(true)} variant="green">
+          <Button onClick={() => grade(true)} variant="green" size="lg">
             Knew it
           </Button>
         </div>

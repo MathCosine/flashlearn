@@ -1,118 +1,169 @@
 import { useMemo, useState } from 'react'
-import type { FlashCard } from '../../types'
+import type { StudyModeProps } from '../../types'
 import { shuffle } from '../../utils/shuffle'
+import { RichText } from '../../components/RichText'
+import { CardImage } from '../../components/CardImage'
 import { Button } from '../../components/ui/Button'
 import { Panel } from '../../components/ui/Panel'
+import { Badge } from '../../components/ui/Badge'
+import { Progress } from '../../components/ui/Progress'
+import { SessionSummary } from '../../components/SessionSummary'
+import { useKey } from '../../hooks/useKey'
+import { sounds } from '../../lib/sound'
 
-export function MultipleChoice({ cards }: { cards: FlashCard[] }) {
-  const [order] = useState(() => shuffle(cards))
+export function MultipleChoice({
+  items,
+  record,
+  onFinish,
+}: StudyModeProps) {
   const [index, setIndex] = useState(0)
   const [selected, setSelected] = useState<string | null>(null)
-  const [score, setScore] = useState({ correct: 0, total: 0 })
+  const [totals, setTotals] = useState({ studied: 0, correct: 0 })
   const [finished, setFinished] = useState(false)
 
-  const current = order[index]
+  const current = items[index]
 
   const options = useMemo(() => {
     if (!current) return []
-    const distractorPool = cards.filter((c) => c.id !== current.id)
+    // Distractors come from the other cards' answers, de-duplicated so an
+    // option can never appear twice.
     const distractors = [
       ...new Set(
-        shuffle(distractorPool)
-          .map((c) => c.back)
-          .filter((b) => b !== current.back),
+        shuffle(items)
+          .filter((i) => i.card.id !== current.card.id)
+          .map((i) => i.answer)
+          .filter((a) => a !== current.answer),
       ),
     ].slice(0, 3)
-    return shuffle([current.back, ...distractors])
+    return shuffle([current.answer, ...distractors])
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [index])
 
-  if (cards.length < 2) {
-    return (
-      <p className="font-medium text-slate-600">
-        You need at least 2 cards in the pool for multiple choice.
-      </p>
-    )
-  }
-
-  function handleSelect(option: string) {
-    if (selected) return
+  function choose(option: string) {
+    if (selected || !current) return
+    const isCorrect = option === current.answer
     setSelected(option)
-    setScore((s) => ({
-      correct: s.correct + (option === current.back ? 1 : 0),
-      total: s.total + 1,
+    record(current.card.id, { correct: isCorrect })
+    if (isCorrect) sounds.correct()
+    else sounds.wrong()
+    setTotals((t) => ({
+      studied: t.studied + 1,
+      correct: t.correct + (isCorrect ? 1 : 0),
     }))
   }
 
   function next() {
-    if (index + 1 >= order.length) {
+    if (index + 1 >= items.length) {
       setFinished(true)
+      onFinish(totals)
       return
     }
     setIndex((i) => i + 1)
     setSelected(null)
   }
 
+  useKey(['1', '2', '3', '4', 'Enter'], (key) => {
+    if (key === 'Enter') {
+      if (selected) next()
+      return
+    }
+    const optionIndex = Number(key) - 1
+    if (options[optionIndex]) choose(options[optionIndex])
+  }, !finished)
+
   function restart() {
     setIndex(0)
     setSelected(null)
-    setScore({ correct: 0, total: 0 })
+    setTotals({ studied: 0, correct: 0 })
     setFinished(false)
   }
 
-  if (finished) {
-    const pct = score.total > 0 ? Math.round((score.correct / score.total) * 100) : 0
+  if (items.length < 2) {
     return (
-      <Panel className="mx-auto max-w-md bg-emerald-200 p-8 text-center">
-        <p className="text-2xl font-extrabold text-slate-900">Quiz complete!</p>
-        <p className="mt-2 font-medium text-slate-700">
-          {score.correct} / {score.total} correct ({pct}%)
+      <Panel className="mx-auto max-w-md bg-white p-6 text-center">
+        <p className="font-medium text-stone-700">
+          Multiple choice needs at least 2 cards so there's something to
+          choose between.
         </p>
-        <Button onClick={restart} variant="green" className="mt-4">
-          Take it again
-        </Button>
       </Panel>
     )
   }
 
+  if (finished) {
+    return (
+      <SessionSummary
+        title="Quiz complete"
+        studied={totals.studied}
+        correct={totals.correct}
+        onRestart={restart}
+      />
+    )
+  }
+
   return (
-    <div className="flex flex-col items-center gap-5">
-      <p className="font-bold text-slate-700">
-        Question {index + 1} of {order.length} · Score: {score.correct}/
-        {score.total}
-      </p>
-      <Panel className="w-full max-w-md bg-amber-100 p-6 text-center">
-        <p className="text-2xl font-extrabold text-slate-900">
-          {current.front}
+    <div className="flex w-full flex-col items-center gap-5">
+      <div className="w-full max-w-xl">
+        <div className="mb-2 flex justify-between text-sm font-bold text-stone-600">
+          <span>
+            Question {index + 1} of {items.length}
+          </span>
+          <span>
+            {totals.correct}/{totals.studied} correct
+          </span>
+        </div>
+        <Progress value={index} max={items.length} />
+      </div>
+
+      <Panel className="w-full max-w-xl bg-amber-200 p-8 text-center">
+        {current.card.image_url && !current.reversed && (
+          <CardImage
+            path={current.card.image_url}
+            className="mx-auto mb-3 max-h-32"
+          />
+        )}
+        <p className="text-3xl font-bold text-ink">
+          <RichText text={current.prompt} />
         </p>
       </Panel>
-      <div className="grid w-full max-w-md grid-cols-1 gap-3">
-        {options.map((option) => {
-          const isCorrect = option === current.back
+
+      <div className="grid w-full max-w-xl grid-cols-1 gap-3">
+        {options.map((option, i) => {
+          const isCorrect = option === current.answer
           const isPicked = option === selected
-          let bg = 'bg-white'
+          let tone = 'bg-white hover:bg-stone-50'
           if (selected) {
-            if (isCorrect) bg = 'bg-emerald-300'
-            else if (isPicked) bg = 'bg-rose-300'
+            if (isCorrect) tone = 'bg-emerald-300'
+            else if (isPicked) tone = 'bg-rose-300 animate-shake'
+            else tone = 'bg-white opacity-60'
           }
           return (
             <button
               key={option}
-              onClick={() => handleSelect(option)}
-              disabled={!!selected}
-              className={`rounded-xl border-[3px] border-black px-4 py-3 text-left font-bold shadow-[4px_4px_0_0_#000] transition-all disabled:opacity-100 ${bg} ${
-                !selected ? 'hover:-translate-y-0.5 hover:shadow-[5px_5px_0_0_#000]' : ''
+              onClick={() => choose(option)}
+              disabled={Boolean(selected)}
+              className={`flex items-center gap-3 rounded-xl border-[3px] border-black px-4 py-3 text-left text-lg font-semibold shadow-hard transition-transform disabled:cursor-default ${tone} ${
+                selected ? '' : 'hover:-translate-y-0.5'
               }`}
             >
-              {option}
+              <span className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md border-2 border-black bg-white text-sm">
+                {i + 1}
+              </span>
+              <RichText text={option} />
             </button>
           )
         })}
       </div>
+
       {selected && (
-        <Button onClick={next} variant="blue">
-          {index + 1 >= order.length ? 'See results' : 'Next →'}
+        <Button onClick={next} variant="blue" size="lg">
+          {index + 1 >= items.length ? 'See results' : 'Next →'}
         </Button>
+      )}
+
+      {!selected && (
+        <div className="flex gap-2">
+          <Badge className="bg-white">Press 1–4 to answer</Badge>
+        </div>
       )}
     </div>
   )
